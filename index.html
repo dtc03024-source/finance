@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>부부 자금 체크 ver3</title>
+  <style>
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", Arial, sans-serif;
+      background: #f4f6f8;
+      overflow: hidden;
+      color: #111;
+    }
+    h1, h2, h3 { margin: 0; padding: 0; }
+    h2 { font-size: 22px; margin-bottom: 14px; }
+    h3 { font-size: 18px; margin-bottom: 8px; }
+    p { line-height: 1.45; }
+    .section {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 64px;
+      height: calc(100dvh - 64px);
+      padding: 16px;
+      padding-bottom: 28px;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior-y: contain;
+      box-sizing: border-box;
+    }
+    .section.active { display: block; }
+    .navbar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 64px;
+      display: flex;
+      background: #fff;
+      border-top: 1px solid #ddd;
+      z-index: 100;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    .navbar button {
+      flex: 1;
+      border: 0;
+      background: transparent;
+      font-size: 14px;
+      color: #777;
+      cursor: pointer;
+    }
+    .navbar button.active { color: #0074d9; font-weight: 700; }
+    .card {
+      background: #fff;
+      border-radius: 14px;
+      padding: 18px;
+      margin-bottom: 14px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.06);
+    }
+    .metric {
+      font-size: 22px;
+      font-weight: 800;
+      margin-top: 8px;
+    }
+    .sub { font-size: 13px; color: #777; }
+    .alert {
+      background: #fff3cd;
+      border-left: 4px solid #ffc107;
+      padding: 12px;
+      margin-bottom: 14px;
+      border-radius: 10px;
+      color: #5f4700;
+      font-size: 14px;
+    }
+    .button {
+      display: inline-block;
+      padding: 8px 12px;
+      margin: 3px 3px 3px 0;
+      font-size: 14px;
+      font-weight: 700;
+      background: #0074d9;
+      color: #fff;
+      border: 0;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    .button.gray { background: #777; }
+    .button.red { background: #d93025; }
+    .button.green { background: #188038; }
+    .button:disabled { background: #bbb; cursor: default; }
+    .input-row { margin-bottom: 12px; }
+    .input-row label { display: block; margin-bottom: 6px; font-size: 14px; font-weight: 700; }
+    .input-row input, .input-row select, .input-row textarea {
+      width: 100%;
+      padding: 10px;
+      font-size: 16px;
+      border: 1px solid #ccc;
+      border-radius: 10px;
+      box-sizing: border-box;
+      background: #fff;
+    }
+    .list-item {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid #eee;
+    }
+    .list-item:last-child { border-bottom: 0; }
+    .list-main { flex: 1; min-width: 0; }
+    .title { font-weight: 800; }
+    .money { font-weight: 800; white-space: nowrap; }
+    .hidden { display: none; }
+    .top-row { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    .danger-zone { border: 1px solid #f4b4b4; }
+  </style>
+</head>
+<body>
+  <div id="homeSection" class="section active">
+    <div class="top-row">
+      <h2>이번 달 요약</h2>
+      <button class="button gray" onclick="showSection('settingsSection')">설정</button>
+    </div>
+    <div id="apiWarning"></div>
+    <div id="homeSummary"></div>
+    <div id="homeAlerts"></div>
+    <div id="homeChecklist"></div>
+    <div id="homeIncomplete"></div>
+  </div>
+
+  <div id="checkSection" class="section">
+    <h2>고정 지출 체크</h2>
+    <div id="checkTasks" class="card"></div>
+  </div>
+
+  <div id="inputSection" class="section">
+    <h2>지출 및 정산 입력</h2>
+
+    <div class="card">
+      <h3>개인돈으로 공동비 결제</h3>
+      <p class="sub">모임통장 대신 개인카드·개인계좌로 공동비를 냈을 때 입력합니다. 기본은 반반 정산입니다.</p>
+      <div class="input-row">
+        <label for="personalAmount">금액</label>
+        <input type="number" id="personalAmount" placeholder="예: 70000" />
+      </div>
+      <div class="input-row">
+        <label for="personalPayer">결제자</label>
+        <select id="personalPayer">
+          <option value="상민">상민</option>
+          <option value="지은">지은</option>
+        </select>
+      </div>
+      <div class="input-row">
+        <label for="personalNote">내용</label>
+        <input type="text" id="personalNote" placeholder="예: 장보기, 외식, 생활용품" />
+      </div>
+      <button class="button" onclick="addPersonalShared()">기록</button>
+    </div>
+
+    <div class="card">
+      <h3>비상저축 사용</h3>
+      <p class="sub">비상저축 통장에서 실제로 출금한 경우에만 입력합니다.</p>
+      <div class="input-row">
+        <label for="emergencyAmount">금액</label>
+        <input type="number" id="emergencyAmount" placeholder="예: 50000" />
+      </div>
+      <div class="input-row">
+        <label for="emergencyPayer">출금자</label>
+        <select id="emergencyPayer">
+          <option value="상민">상민</option>
+          <option value="지은">지은</option>
+        </select>
+      </div>
+      <div class="input-row">
+        <label for="emergencyNote">내용</label>
+        <input type="text" id="emergencyNote" placeholder="예: 예상치 못한 지출" />
+      </div>
+      <button class="button" onclick="addEmergency()">기록</button>
+    </div>
+
+    <div class="card">
+      <h3>변동비 지출</h3>
+      <p class="sub">관리비·가스비·인터넷·보험료·통신비처럼 매월 달라지는 비용입니다.</p>
+      <div class="input-row">
+        <label for="varName">항목</label>
+        <select id="varName">
+          <option value="관리비">관리비</option>
+          <option value="가스비">가스비</option>
+          <option value="인터넷">인터넷</option>
+          <option value="보험료">보험료</option>
+          <option value="통신비">통신비</option>
+          <option value="기타">기타</option>
+        </select>
+      </div>
+      <div class="input-row">
+        <label for="varAmount">금액</label>
+        <input type="number" id="varAmount" placeholder="예: 120000" />
+      </div>
+      <div class="input-row">
+        <label for="varPayer">결제자</label>
+        <select id="varPayer">
+          <option value="상민">상민</option>
+          <option value="지은">지은</option>
+        </select>
+      </div>
+      <div class="input-row">
+        <label for="varSplit">정산 방식</label>
+        <select id="varSplit">
+          <option value="반반">반반</option>
+          <option value="상민">상민 부담</option>
+          <option value="지은">지은 부담</option>
+          <option value="정산없음">정산없음</option>
+        </select>
+      </div>
+      <div class="input-row">
+        <label for="varNote">내용</label>
+        <input type="text" id="varNote" placeholder="예: 6월 관리비" />
+      </div>
+      <button class="button" onclick="addVariable()">기록</button>
+    </div>
+  </div>
+
+  <div id="settlementSection" class="section">
+    <h2>정산/통계</h2>
+    <div class="card">
+      <label for="monthSelect">월 선택</label>
+      <input type="month" id="monthSelect" min="2000-01" max="2100-12" onchange="loadState()" />
+    </div>
+    <div id="settlementSummary"></div>
+    <div id="entryList"></div>
+  </div>
+
+  <div id="settingsSection" class="section">
+    <h2>설정</h2>
+    <div class="card">
+      <h3>Apps Script Web App URL</h3>
+      <p class="sub">Google Apps Script 배포 후 받은 URL을 붙여넣으세요. GitHub 파일에 직접 URL을 넣지 않은 경우 이 설정이 필요합니다.</p>
+      <div class="input-row">
+        <label for="apiUrlInput">API URL</label>
+        <input type="url" id="apiUrlInput" placeholder="https://script.google.com/macros/s/..." />
+      </div>
+      <button class="button" onclick="saveApiUrl()">저장</button>
+      <button class="button gray" onclick="testApi()">연결 테스트</button>
+    </div>
+    <div class="card danger-zone">
+      <h3>현재 달 테스트 데이터 초기화</h3>
+      <p class="sub">선택된 월의 입력내역과 정산완료 기록만 삭제합니다. 고정 지출 체크 항목은 유지됩니다.</p>
+      <button class="button red" onclick="clearCurrentMonthData()">선택 월 입력/정산 기록 삭제</button>
+    </div>
+  </div>
+
+  <div class="navbar">
+    <button id="navHome" class="active" onclick="showSection('homeSection')">Home</button>
+    <button id="navCheck" onclick="showSection('checkSection')">체크</button>
+    <button id="navInput" onclick="showSection('inputSection')">입력</button>
+    <button id="navStats" onclick="showSection('settlementSection')">정산</button>
+  </div>
+
+<script>
+  const DEFAULT_API_URL = 'PASTE_APPS_SCRIPT_WEB_APP_URL_HERE';
+
+  const FALLBACK_TASKS = [
+    { name: "상민 적금", person: "상민", amount: 1000000, auto: false, completed: false },
+    { name: "지은 적금", person: "지은", amount: 500000, auto: false, completed: false },
+    { name: "상민 투자", person: "상민", amount: 1000000, auto: false, completed: false },
+    { name: "지은 투자", person: "지은", amount: 1000000, auto: false, completed: false },
+    { name: "비상저축", person: "지은", amount: 500000, auto: false, completed: false },
+    { name: "아버지 상환", person: "지은", amount: 200000, auto: false, completed: false },
+    { name: "교통비", person: "상민", amount: 200000, auto: false, completed: false },
+    { name: "상민 생활비 납입", person: "상민", amount: 250000, auto: false, completed: false },
+    { name: "지은 생활비 납입", person: "지은", amount: 250000, auto: false, completed: false },
+    { name: "상민 용돈", person: "상민", amount: 300000, auto: true, completed: true },
+    { name: "지은 용돈", person: "지은", amount: 300000, auto: true, completed: true }
+  ];
+
+  let state = null;
+
+  function getCurrentMonthKey() {
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  }
+
+  function formatWon(value) {
+    const n = Math.round(Number(value || 0));
+    return '₩' + n.toLocaleString('ko-KR');
+  }
+
+  function getApiUrl() {
+    const saved = localStorage.getItem('financeAppApiUrl');
+    if (saved) return saved;
+    if (DEFAULT_API_URL && !DEFAULT_API_URL.includes('PASTE_')) return DEFAULT_API_URL;
+    return '';
+  }
+
+  function showSection(sectionId) {
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    document.getElementById(sectionId).classList.add('active');
+
+    document.querySelectorAll('.navbar button').forEach(b => b.classList.remove('active'));
+    if (sectionId === 'homeSection') document.getElementById('navHome').classList.add('active');
+    if (sectionId === 'checkSection') document.getElementById('navCheck').classList.add('active');
+    if (sectionId === 'inputSection') document.getElementById('navInput').classList.add('active');
+    if (sectionId === 'settlementSection') document.getElementById('navStats').classList.add('active');
+
+    if (sectionId !== 'settingsSection') loadState();
+  }
+
+  function setLoading(message) {
+    document.getElementById('apiWarning').innerHTML = `<div class="alert">${message}</div>`;
+  }
+
+  function api(action, payload = {}) {
+    const apiUrl = getApiUrl();
+    return new Promise((resolve, reject) => {
+      if (!apiUrl) {
+        reject(new Error('Apps Script API URL이 설정되지 않았습니다.'));
+        return;
+      }
+
+      const cb = 'financeCb_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+      const script = document.createElement('script');
+      const timer = setTimeout(() => {
+        cleanup();
+        reject(new Error('서버 응답 시간이 초과되었습니다.'));
+      }, 20000);
+
+      function cleanup() {
+        clearTimeout(timer);
+        delete window[cb];
+        if (script.parentNode) script.parentNode.removeChild(script);
+      }
+
+      window[cb] = function(response) {
+        cleanup();
+        if (!response || response.ok === false) {
+          reject(new Error(response && response.error ? response.error : 'API 오류'));
+        } else {
+          resolve(response);
+        }
+      };
+
+      const url = apiUrl
+        + '?action=' + encodeURIComponent(action)
+        + '&data=' + encodeURIComponent(JSON.stringify(payload))
+        + '&callback=' + encodeURIComponent(cb)
+        + '&_=' + Date.now();
+
+      script.onerror = function() {
+        cleanup();
+        reject(new Error('Apps Script URL을 불러오지 못했습니다.'));
+      };
+
+      script.src = url;
+      document.body.appendChild(script);
+    });
+  }
+
+  async function loadState() {
+    const monthInput = document.getElementById('monthSelect');
+    if (!monthInput.value) monthInput.value = getCurrentMonthKey();
+
+    const apiUrl = getApiUrl();
+    if (!apiUrl) {
+      document.getElementById('apiWarning').innerHTML =
+        '<div class="alert">Google Sheets 연동 URL이 필요합니다. 설정 탭에서 Apps Script Web App URL을 저장하세요.</div>';
+      return;
+    }
+
+    try {
+      document.getElementById('apiWarning').innerHTML = '';
+      let res = await api('getState', { month: monthInput.value });
+      state = res.state;
+
+      // Tasks 시트가 비어 있거나 이전 배포 문제로 0/0이 표시되는 경우 서버에서 기본 체크리스트를 재생성합니다.
+      if (!state.tasks || state.tasks.filter(t => !t.auto).length === 0) {
+        await api('resetTasksForMonth', { month: monthInput.value });
+        res = await api('getState', { month: monthInput.value });
+        state = res.state;
+      }
+
+      renderAll();
+    } catch (err) {
+      document.getElementById('apiWarning').innerHTML = `<div class="alert">${err.message}</div>`;
+    }
+  }
+
+  function renderAll() {
+    renderHome();
+    renderTasks();
+    renderSettlement();
+  }
+
+  function getDisplayTasks() {
+    if (state && Array.isArray(state.tasks) && state.tasks.length > 0) return state.tasks;
+    return FALLBACK_TASKS;
+  }
+
+  function taskStats(tasks) {
+    const todo = tasks.filter(t => !t.auto);
+    const done = todo.filter(t => !!t.completed);
+    return {
+      todo,
+      done,
+      incomplete: todo.filter(t => !t.completed),
+      ratio: todo.length ? Math.round(done.length / todo.length * 100) : 0
+    };
+  }
+
+  function renderHome() {
+    if (!state) return;
+    const tasks = getDisplayTasks();
+    const ts = taskStats(tasks);
+    const s = state.summary || {};
+
+    const monthlySavings = tasks
+      .filter(t => t.completed && (t.name.includes('적금') || t.name.includes('투자')))
+      .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+
+    document.getElementById('homeSummary').innerHTML = `
+      <div class="card">
+        <h3>이번 달 정산</h3>
+        <div class="metric">${settlementText(s.netSettlement)}</div>
+      </div>
+      <div class="card">
+        <h3>비상저축 잔액</h3>
+        <div class="metric">${formatWon(s.emergencyBalance)}</div>
+      </div>
+      <div class="card">
+        <h3>이행률 (자금계획 실행 여부)</h3>
+        <div class="metric">${ts.ratio}%</div>
+        <div class="sub">${ts.done.length} / ${ts.todo.length} 완료</div>
+      </div>
+      <div class="card">
+        <h3>저축(적금,투자)</h3>
+        <div class="metric">${formatWon(monthlySavings)}</div>
+        <div class="sub">이번 달 완료 기준</div>
+      </div>
+      <div class="card">
+        <h3>저축(적금,투자) 누적액</h3>
+        <div class="metric">${formatWon(s.cumulativeSavings)}</div>
+        <div class="sub">전체 합계</div>
+      </div>
+    `;
+
+    document.getElementById('homeAlerts').innerHTML =
+      s.netSettlement === 0 ? '' : `<div class="alert">${settlementText(s.netSettlement)} 정산이 남아 있습니다.</div>`;
+
+    document.getElementById('homeChecklist').innerHTML = `
+      <div class="card">
+        <h3>자금계획 체크리스트</h3>
+        <p class="sub">아래 항목 완료 여부가 이행률에 바로 반영됩니다.</p>
+        ${renderTaskList(tasks)}
+      </div>
+    `;
+
+    document.getElementById('homeIncomplete').innerHTML = `
+      <div class="card">
+        <h3>아직 안 나간 고정항목</h3>
+        ${ts.incomplete.length
+          ? '<ul>' + ts.incomplete.map(t => `<li>${t.name} (${formatWon(t.amount)})</li>`).join('') + '</ul>'
+          : '<p>모든 고정항목이 완료되었습니다.</p>'}
+      </div>
+    `;
+  }
+
+  function renderTasks() {
+    if (!state) return;
+    const tasks = getDisplayTasks();
+    document.getElementById('checkTasks').innerHTML = renderTaskList(tasks) || '<p>항목이 없습니다.</p>';
+  }
+
+  function renderTaskList(tasks) {
+    return (tasks || []).filter(t => !t.auto).map(t => `
+      <div class="list-item">
+        <div class="list-main">
+          <div class="title">${t.completed ? '✅ ' : '⬜ '}${t.name}</div>
+          <div class="sub">${t.person} · ${formatWon(t.amount)}</div>
+        </div>
+        <div>
+          ${t.completed
+            ? `<button class="button gray" onclick="setTask('${escapeAttr(t.name)}', false)">되돌리기</button>`
+            : `<button class="button" onclick="setTask('${escapeAttr(t.name)}', true)">완료</button>`}
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function renderSettlement() {
+    if (!state) return;
+    const s = state.summary;
+    document.getElementById('settlementSummary').innerHTML = `
+      <div class="card">
+        <h3>남은 정산금액</h3>
+        <div class="metric">${settlementText(s.netSettlement)}</div>
+        ${s.netSettlement === 0 ? '<p class="sub">정산할 금액이 없습니다.</p>' : '<button class="button green" onclick="completeSettlement()">정산 완료 처리</button>'}
+      </div>
+      <div class="card">
+        <h3>선택 월 요약</h3>
+        <p>고정 지출: <strong>${formatWon(s.fixedTotal)}</strong></p>
+        <p>변동/기타 지출: <strong>${formatWon(s.variableTotal)}</strong></p>
+        <p>총 실행 금액: <strong>${formatWon(s.executedTotal)}</strong></p>
+      </div>
+    `;
+
+    let html = '<div class="card"><h3>입력 내역</h3>';
+    const entries = state.entries || [];
+    const settlements = state.settlements || [];
+
+    if (!entries.length && !settlements.length) {
+      html += '<p>입력된 내역이 없습니다.</p>';
+    }
+
+    const groups = [
+      ['personalShared', '개인 공동비 지출'],
+      ['emergency', '비상저축 사용'],
+      ['variable', '변동비 지출']
+    ];
+
+    groups.forEach(([type, title]) => {
+      const list = entries.filter(e => e.type === type);
+      if (!list.length) return;
+      html += `<h4>${title}</h4>`;
+      list.forEach(e => {
+        html += `
+          <div class="list-item">
+            <div class="list-main">
+              <div class="title">${entryTitle(e)}</div>
+              <div class="sub">${e.date || ''} · ${e.payer || ''} · ${e.splitType || ''}</div>
+            </div>
+            <button class="button red" onclick="deleteEntry('${e.id}')">취소</button>
+          </div>
+        `;
+      });
+    });
+
+    if (settlements.length) {
+      html += '<h4>정산 완료 기록</h4>';
+      settlements.forEach(st => {
+        html += `
+          <div class="list-item">
+            <div class="list-main">
+              <div class="title">${settlementText(st.amount)}</div>
+              <div class="sub">${st.date || ''} · 정산 완료 기록</div>
+            </div>
+            <button class="button red" onclick="deleteSettlement('${st.id}')">취소</button>
+          </div>
+        `;
+      });
+    }
+
+    html += '</div>';
+    document.getElementById('entryList').innerHTML = html;
+  }
+
+  function entryTitle(e) {
+    const amount = formatWon(e.amount);
+    if (e.type === 'personalShared') return `${e.note || '공동비'} ${amount}`;
+    if (e.type === 'emergency') return `${e.note || '비상저축 사용'} ${amount}`;
+    return `${e.itemName || '변동비'} ${amount}${e.note ? ' - ' + e.note : ''}`;
+  }
+
+  function settlementText(value) {
+    const n = Math.round(Number(value || 0));
+    if (n > 0) return `지은 → 상민 ${formatWon(n)}`;
+    if (n < 0) return `상민 → 지은 ${formatWon(Math.abs(n))}`;
+    return '없음';
+  }
+
+  function escapeAttr(str) {
+    return String(str).replace(/'/g, "\\'");
+  }
+
+  async function setTask(name, completed) {
+    try {
+      await api('setTask', { month: state.month, name, completed });
+      await loadState();
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  async function addPersonalShared() {
+    const amount = Number(document.getElementById('personalAmount').value);
+    const payer = document.getElementById('personalPayer').value;
+    const note = document.getElementById('personalNote').value.trim();
+    if (!amount || amount <= 0) return alert('금액을 입력하세요.');
+    await addEntry({ type: 'personalShared', amount, payer, splitType: '반반', note });
+    document.getElementById('personalAmount').value = '';
+    document.getElementById('personalNote').value = '';
+  }
+
+  async function addEmergency() {
+    const amount = Number(document.getElementById('emergencyAmount').value);
+    const payer = document.getElementById('emergencyPayer').value;
+    const note = document.getElementById('emergencyNote').value.trim();
+    if (!amount || amount <= 0) return alert('금액을 입력하세요.');
+    await addEntry({ type: 'emergency', amount, payer, splitType: '정산없음', note });
+    document.getElementById('emergencyAmount').value = '';
+    document.getElementById('emergencyNote').value = '';
+  }
+
+  async function addVariable() {
+    const itemName = document.getElementById('varName').value;
+    const amount = Number(document.getElementById('varAmount').value);
+    const payer = document.getElementById('varPayer').value;
+    const splitType = document.getElementById('varSplit').value;
+    const note = document.getElementById('varNote').value.trim();
+    if (!amount || amount <= 0) return alert('금액을 입력하세요.');
+    await addEntry({ type: 'variable', itemName, amount, payer, splitType, note });
+    document.getElementById('varAmount').value = '';
+    document.getElementById('varNote').value = '';
+  }
+
+  async function addEntry(entry) {
+    try {
+      await api('addEntry', { month: state.month, entry });
+      await loadState();
+      alert('기록했습니다.');
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  async function deleteEntry(id) {
+    if (!confirm('이 입력 내역을 취소할까요?')) return;
+    try {
+      await api('deleteEntry', { id });
+      await loadState();
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  async function deleteSettlement(id) {
+    if (!confirm('이 정산 완료 기록을 취소할까요?')) return;
+    try {
+      await api('deleteSettlement', { id });
+      await loadState();
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  async function completeSettlement() {
+    if (!state || !state.summary || state.summary.netSettlement === 0) return alert('정산할 금액이 없습니다.');
+    if (!confirm(settlementText(state.summary.netSettlement) + ' 정산 완료 처리할까요?')) return;
+    try {
+      await api('completeSettlement', { month: state.month });
+      await loadState();
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  async function clearCurrentMonthData() {
+    const month = document.getElementById('monthSelect').value || getCurrentMonthKey();
+    if (!confirm(month + ' 입력내역과 정산완료 기록을 삭제할까요?')) return;
+    try {
+      await api('clearMonthData', { month });
+      await loadState();
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  function saveApiUrl() {
+    const url = document.getElementById('apiUrlInput').value.trim();
+    if (!url) return alert('URL을 입력하세요.');
+    localStorage.setItem('financeAppApiUrl', url);
+    alert('저장했습니다.');
+    loadState();
+  }
+
+  async function testApi() {
+    try {
+      await api('setup', {});
+      alert('연결 성공. Google Sheets 초기화도 완료했습니다.');
+      await loadState();
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  function init() {
+    document.getElementById('monthSelect').value = getCurrentMonthKey();
+    document.getElementById('apiUrlInput').value = getApiUrl();
+    loadState();
+  }
+
+  init();
+</script>
+</body>
+</html>
